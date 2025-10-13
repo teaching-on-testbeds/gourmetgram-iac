@@ -110,12 +110,43 @@
     - name: Set DNS for interface ens4
       command: resolvectl dns ens4 127.0.0.1
 
-- name: Restart CoreDNS on node1
+- name: Patch CoreDNS to use external resolver and restart it
   hosts: node1
   become: yes
   tasks:
+    - name: Patch CoreDNS ConfigMap to use 8.8.8.8
+      command: >
+        kubectl -n kube-system patch configmap coredns
+        --type merge
+        -p '{{ coredns_patch | to_json }}'
+      vars:
+        coredns_patch:
+          data:
+            Corefile: |
+              .:53 {
+                  errors
+                  health
+                  ready
+                  kubernetes cluster.local in-addr.arpa ip6.arpa {
+                    pods insecure
+                    fallthrough in-addr.arpa ip6.arpa
+                  }
+                  prometheus :9153
+                  forward . 8.8.8.8 {
+                    prefer_udp
+                    max_concurrent 1000
+                  }
+                  cache 30
+                  loop
+                  reload
+                  loadbalance
+              }
+
     - name: Restart CoreDNS deployment
       command: kubectl -n kube-system rollout restart deployment coredns
+
+    - name: Wait for CoreDNS to be ready
+      shell: kubectl -n kube-system rollout status deployment/coredns --timeout=120s
 
 - name: Install ArgoCD CLI
   hosts: node1
