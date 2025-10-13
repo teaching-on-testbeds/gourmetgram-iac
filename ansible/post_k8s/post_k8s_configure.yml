@@ -34,10 +34,6 @@
 - name: Add User to Docker Group
   hosts: node1,node2,node3
   become: yes
-
-  vars:
-    insecure_registry: "registry.kube-system.svc.cluster.local:5000"
-
   tasks:
 
     - name: Add user 'cc' to docker group
@@ -45,7 +41,7 @@
         name: cc
         groups: docker
         append: yes
-
+        
     - meta: reset_connection
 
     - name: Verify Docker group membership for user 'cc'
@@ -61,8 +57,9 @@
   become: yes
   tasks:
     - name: Create dashboard admin-user and RBAC
+      become: yes
       shell: |
-        cat <<EOF | kubectl apply -f -
+        kubectl apply -f - <<EOF
         apiVersion: v1
         kind: ServiceAccount
         metadata:
@@ -103,7 +100,25 @@
       debug:
         msg: "Dashboard token: {{ dashboard_token.stdout }}"
 
-- name: Configure DNS and Restart CoreDNS
+
+- name: Disable IPv6 on Internet-facing interface
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Create sysctl config to disable IPv6
+      copy:
+        dest: /etc/sysctl.d/99-disable-ipv6.conf
+        content: |
+          net.ipv6.conf.ens3.disable_ipv6 = 1
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Apply sysctl settings immediately
+      command: sysctl --system
+
+- name: Avoid using private interface for DNS
   hosts: node1,node2,node3
   become: yes
   tasks:
@@ -132,7 +147,10 @@
                     fallthrough in-addr.arpa ip6.arpa
                   }
                   prometheus :9153
-                  forward . 8.8.8.8 {
+                  template IN AAAA {
+                    rcode NXDOMAIN
+                  }
+                  forward . 8.8.8.8 1.1.1.1 {
                     prefer_udp
                     max_concurrent 1000
                   }
@@ -147,6 +165,7 @@
 
     - name: Wait for CoreDNS to be ready
       shell: kubectl -n kube-system rollout status deployment/coredns --timeout=120s
+
 
 - name: Install ArgoCD CLI
   hosts: node1
@@ -244,20 +263,3 @@
     - name: Show apply result
       debug:
         var: apply_result.stdout
-
-- name: Disable IPv6 on Internet-facing interface
-  hosts: all
-  become: true
-  tasks:
-
-    - name: Create sysctl config to disable IPv6
-      copy:
-        dest: /etc/sysctl.d/99-disable-ipv6.conf
-        content: |
-          net.ipv6.conf.ens3.disable_ipv6 = 1
-        owner: root
-        group: root
-        mode: '0644'
-
-    - name: Apply sysctl settings immediately
-      command: sysctl --system
