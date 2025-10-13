@@ -46,11 +46,7 @@
         groups: docker
         append: yes
 
-    - name: Restart Docker
-      systemd:
-        name: docker
-        state: restarted
-        enabled: yes
+    - meta: reset_connection
 
     - name: Verify Docker group membership for user 'cc'
       command: id cc
