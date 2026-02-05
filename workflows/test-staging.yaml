@@ -209,17 +209,24 @@ spec:
             - name: model-version
               value: "{{inputs.parameters.model-version}}"
 
-  # Template: Trigger revert-staging workflow (placeholder for Task 9)
+  # Template: Trigger revert-staging workflow
   - name: trigger-revert
     inputs:
       parameters:
       - name: model-version
-    script:
-      image: alpine:latest
-      command: [sh]
-      source: |
-        #!/bin/sh
-        echo "❌ Tests failed for model version {{inputs.parameters.model-version}}"
-        echo "TODO: Trigger revert-staging workflow (will be implemented in Task 9)"
-        echo "For now, logging failure and exiting"
-        exit 1
+    resource:
+      action: create
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata:
+          generateName: revert-staging-
+        spec:
+          workflowTemplateRef:
+            name: revert-staging
+          arguments:
+            parameters:
+            - name: failed-model-version
+              value: "{{inputs.parameters.model-version}}"
+            - name: failure-reason
+              value: "Staging tests failed (integration/resource/load test)"

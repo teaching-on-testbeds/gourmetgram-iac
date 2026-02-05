@@ -1,0 +1,159 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: revert-staging
+spec:
+  entrypoint: revert-flow
+  arguments:
+    parameters:
+    - name: failed-model-version
+    - name: failure-reason
+      value: "Tests failed"
+
+  templates:
+  - name: revert-flow
+    steps:
+      # Step 1: Find previous staging version from MLFlow model history
+      - - name: get-previous-version
+          template: find-previous-staging-version
+          arguments:
+            parameters:
+            - name: failed-version
+              value: "{{workflow.parameters.failed-model-version}}"
+
+      # Step 2: Deploy previous version to staging (image already exists in registry)
+      - - name: deploy-previous
+          template: trigger-deploy
+          arguments:
+            parameters:
+            - name: model-version
+              value: "{{steps.get-previous-version.outputs.result}}"
+
+      # Step 3: Update MLFlow alias to point back to previous version
+      - - name: update-mlflow-alias
+          template: set-mlflow-alias
+          arguments:
+            parameters:
+            - name: model-version
+              value: "{{steps.get-previous-version.outputs.result}}"
+
+      # Step 4: Log failure for debugging
+      - - name: log-failure
+          template: log-revert-reason
+          arguments:
+            parameters:
+            - name: failed-version
+              value: "{{workflow.parameters.failed-model-version}}"
+            - name: reverted-to-version
+              value: "{{steps.get-previous-version.outputs.result}}"
+            - name: reason
+              value: "{{workflow.parameters.failure-reason}}"
+
+  # Template: Find previous staging version from MLFlow
+  - name: find-previous-staging-version
+    inputs:
+      parameters:
+      - name: failed-version
+    script:
+      image: python:3.11-slim
+      command: [sh, -c]
+      source: |
+        pip install mlflow-skinny > /dev/null
+        export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
+
+        python << 'EOF'
+        import mlflow
+
+        client = mlflow.tracking.MlflowClient()
+        failed_version = "{{inputs.parameters.failed-version}}"
+
+        # Get all versions of the model, sorted by version number descending
+        model_name = "GourmetGramFood11Model"
+        versions = client.search_model_versions(f"name='{model_name}'")
+
+        # Sort by version number (descending)
+        versions_sorted = sorted(versions, key=lambda v: int(v.version), reverse=True)
+
+        # Find the version right before the failed version
+        failed_version_int = int(failed_version)
+        previous_version = None
+
+        for v in versions_sorted:
+            v_int = int(v.version)
+            if v_int < failed_version_int:
+                previous_version = v.version
+                break
+
+        if previous_version is None:
+            print(f"ERROR: No previous version found before version {failed_version}")
+            print("Cannot revert - this is the first version")
+            exit(1)
+
+        print(f"Found previous staging version: {previous_version}")
+        print(previous_version)
+        EOF
+
+  # Template: Update MLFlow staging alias to previous version
+  - name: set-mlflow-alias
+    inputs:
+      parameters:
+      - name: model-version
+    script:
+      image: python:3.11-slim
+      command: [sh, -c]
+      source: |
+        pip install mlflow-skinny > /dev/null
+        export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
+
+        python -c "import mlflow; client = mlflow.tracking.MlflowClient(); client.set_registered_model_alias(name='GourmetGramFood11Model', alias='staging', version='{{inputs.parameters.model-version}}')"
+
+        echo "Updated MLFlow staging alias to version {{inputs.parameters.model-version}}"
+
+  # Template: Trigger deploy-container-image workflow
+  - name: trigger-deploy
+    inputs:
+      parameters:
+      - name: model-version
+    resource:
+      action: create
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata:
+          generateName: deploy-container-image-
+        spec:
+          workflowTemplateRef:
+            name: deploy-container-image
+          arguments:
+            parameters:
+            - name: environment
+              value: "staging"
+            - name: model-version
+              value: "{{inputs.parameters.model-version}}"
+
+  # Template: Log revert reason for debugging
+  - name: log-revert-reason
+    inputs:
+      parameters:
+      - name: failed-version
+      - name: reverted-to-version
+      - name: reason
+    script:
+      image: alpine:latest
+      command: [sh]
+      source: |
+        #!/bin/sh
+        echo "=========================================="
+        echo "STAGING REVERT PERFORMED"
+        echo "=========================================="
+        echo "Failed model version: {{inputs.parameters.failed-version}}"
+        echo "Reverted to version: {{inputs.parameters.reverted-to-version}}"
+        echo "Reason: {{inputs.parameters.reason}}"
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "=========================================="
+        echo ""
+        echo "Action items:"
+        echo "1. Review test logs to identify failure cause"
+        echo "2. Fix model/code issues before redeploying version {{inputs.parameters.failed-version}}"
+        echo "3. Staging environment is now running version {{inputs.parameters.reverted-to-version}}"
+        echo "=========================================="
