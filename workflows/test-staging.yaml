@@ -1,0 +1,222 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: test-staging
+spec:
+  entrypoint: test-flow
+  arguments:
+    parameters:
+    - name: model-version
+    - name: staging-namespace
+      value: "gourmetgram-staging"
+    - name: staging-service
+      value: "gourmetgram-staging-service"
+    - name: staging-port
+      value: "8000"
+
+  templates:
+  - name: test-flow
+    steps:
+      # Step 1: Integration test - verify /version endpoint returns model_valid=true
+      - - name: integration-test
+          template: check-version
+          arguments:
+            parameters:
+            - name: service-url
+              value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
+
+      # Step 2: Resource test - verify pod is running (not OOMKilled/Pending/CrashLoopBackOff)
+      - - name: resource-test
+          template: check-pod-status
+          arguments:
+            parameters:
+            - name: namespace
+              value: "{{workflow.parameters.staging-namespace}}"
+
+      # Step 3: Load test - verify p95 latency < 2000ms, success rate > 95%
+      - - name: load-test
+          template: run-load-test
+          arguments:
+            parameters:
+            - name: service-url
+              value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
+
+      # Step 4: Branching logic - promote if tests pass, revert if tests fail
+      - - name: promote-on-success
+          template: trigger-promote
+          arguments:
+            parameters:
+            - name: model-version
+              value: "{{workflow.parameters.model-version}}"
+          when: "{{steps.integration-test.outputs.result}} == pass && {{steps.resource-test.outputs.result}} == pass && {{steps.load-test.outputs.result}} == pass"
+        - name: revert-on-failure
+          template: trigger-revert
+          arguments:
+            parameters:
+            - name: model-version
+              value: "{{workflow.parameters.model-version}}"
+          when: "{{steps.integration-test.outputs.result}} == fail || {{steps.resource-test.outputs.result}} == fail || {{steps.load-test.outputs.result}} == fail"
+
+  # Template: Check /version endpoint
+  - name: check-version
+    inputs:
+      parameters:
+      - name: service-url
+    script:
+      image: curlimages/curl:latest
+      command: [sh]
+      source: |
+        #!/bin/sh
+        echo "Testing integration: {{inputs.parameters.service-url}}/version"
+
+        # Wait for service to be ready (max 60 seconds)
+        for i in $(seq 1 12); do
+          if curl -s -f "{{inputs.parameters.service-url}}/version" > /dev/null 2>&1; then
+            echo "Service is ready"
+            break
+          fi
+          echo "Waiting for service... ($i/12)"
+          sleep 5
+        done
+
+        # Fetch version info
+        RESPONSE=$(curl -s "{{inputs.parameters.service-url}}/version")
+        echo "Response: $RESPONSE"
+
+        # Check if model_valid is true
+        if echo "$RESPONSE" | grep -q '"model_valid": *true'; then
+          echo "✅ Integration test PASSED: model_valid=true"
+          echo "pass"
+        else
+          echo "❌ Integration test FAILED: model_valid=false or invalid response"
+          echo "$RESPONSE"
+          echo "fail"
+        fi
+
+  # Template: Check pod status
+  - name: check-pod-status
+    inputs:
+      parameters:
+      - name: namespace
+    script:
+      image: bitnami/kubectl:latest
+      command: [sh]
+      source: |
+        #!/bin/sh
+        echo "Checking pod status in namespace {{inputs.parameters.namespace}}"
+
+        # Get pod status
+        POD_STATUS=$(kubectl get pods -n {{inputs.parameters.namespace}} -l app=gourmetgram-staging -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
+        echo "Pod status: $POD_STATUS"
+
+        if [ "$POD_STATUS" = "Running" ]; then
+          # Check for container errors
+          CONTAINER_STATE=$(kubectl get pods -n {{inputs.parameters.namespace}} -l app=gourmetgram-staging -o jsonpath='{.items[0].status.containerStatuses[0].state}' 2>/dev/null)
+          echo "Container state: $CONTAINER_STATE"
+
+          # Check for OOMKilled
+          if echo "$CONTAINER_STATE" | grep -q "OOMKilled"; then
+            echo "❌ Resource test FAILED: Container is OOMKilled"
+            echo "fail"
+          else
+            echo "✅ Resource test PASSED: Pod is Running"
+            echo "pass"
+          fi
+        elif [ "$POD_STATUS" = "Pending" ]; then
+          echo "❌ Resource test FAILED: Pod is Pending"
+          echo "fail"
+        elif [ -z "$POD_STATUS" ]; then
+          echo "❌ Resource test FAILED: No pod found"
+          echo "fail"
+        else
+          echo "❌ Resource test FAILED: Pod status is $POD_STATUS"
+          echo "fail"
+        fi
+
+  # Template: Run load test with hey
+  - name: run-load-test
+    inputs:
+      parameters:
+      - name: service-url
+    script:
+      image: williamyeh/hey:latest
+      command: [sh]
+      source: |
+        #!/bin/sh
+        echo "Running load test: 100 requests, 10 concurrent"
+
+        # Run hey load test on /version endpoint (lightweight test)
+        hey -n 100 -c 10 -m GET "{{inputs.parameters.service-url}}/version" > /tmp/results.txt
+
+        cat /tmp/results.txt
+
+        # Parse results
+        SUCCESS_RATE=$(grep "Success rate" /tmp/results.txt | awk '{print $3}' | tr -d '%')
+        P95_LATENCY=$(grep "95%" /tmp/results.txt | awk '{print $2}')
+
+        echo "Success rate: ${SUCCESS_RATE}%"
+        echo "P95 latency: ${P95_LATENCY}"
+
+        # Convert P95 latency to milliseconds (hey outputs in seconds)
+        P95_MS=$(echo "$P95_LATENCY" | awk '{print $1 * 1000}')
+
+        # Check thresholds
+        PASS=true
+
+        # Success rate must be > 95%
+        if [ "$(echo "$SUCCESS_RATE < 95" | bc -l)" -eq 1 ]; then
+          echo "❌ Load test FAILED: Success rate ${SUCCESS_RATE}% < 95%"
+          PASS=false
+        fi
+
+        # P95 latency must be < 2000ms
+        if [ "$(echo "$P95_MS > 2000" | bc -l)" -eq 1 ]; then
+          echo "❌ Load test FAILED: P95 latency ${P95_MS}ms > 2000ms"
+          PASS=false
+        fi
+
+        if [ "$PASS" = true ]; then
+          echo "✅ Load test PASSED: Success rate ${SUCCESS_RATE}%, P95 ${P95_MS}ms"
+          echo "pass"
+        else
+          echo "fail"
+        fi
+
+  # Template: Trigger promote-model workflow
+  - name: trigger-promote
+    inputs:
+      parameters:
+      - name: model-version
+    resource:
+      action: create
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata:
+          generateName: promote-model-
+        spec:
+          workflowTemplateRef:
+            name: promote-model
+          arguments:
+            parameters:
+            - name: source-environment
+              value: "staging"
+            - name: target-environment
+              value: "canary"
+            - name: model-version
+              value: "{{inputs.parameters.model-version}}"
+
+  # Template: Trigger revert-staging workflow (placeholder for Task 9)
+  - name: trigger-revert
+    inputs:
+      parameters:
+      - name: model-version
+    script:
+      image: alpine:latest
+      command: [sh]
+      source: |
+        #!/bin/sh
+        echo "❌ Tests failed for model version {{inputs.parameters.model-version}}"
+        echo "TODO: Trigger revert-staging workflow (will be implemented in Task 9)"
+        echo "For now, logging failure and exiting"
+        exit 1
