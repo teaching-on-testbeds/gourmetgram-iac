@@ -12,6 +12,9 @@
       - deploy-container-image.yaml
       - promote-model.yaml
       - train-model.yaml
+      - test-staging.yaml
+      - revert-staging.yaml
+      - cron-train.yaml
 
   tasks:
     - name: Clone or update gourmetgram-iac repo
