@@ -48,6 +48,12 @@ spec:
               value: "{{workflow.parameters.model-version}}"
             - name: environment
               value: "staging"
+      - - name: test-staging
+          template: trigger-test
+          arguments:
+            parameters:
+            - name: model-version
+              value: "{{workflow.parameters.model-version}}"
 
   - name: git-clone
     container:
@@ -154,5 +160,24 @@ spec:
             parameters:
             - name: environment
               value: "{{inputs.parameters.environment}}"
+            - name: model-version
+              value: "{{inputs.parameters.model-version}}"
+
+  - name: trigger-test
+    inputs:
+      parameters:
+      - name: model-version
+    resource:
+      action: create
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata:
+          generateName: test-staging-
+        spec:
+          workflowTemplateRef:
+            name: test-staging
+          arguments:
+            parameters:
             - name: model-version
               value: "{{inputs.parameters.model-version}}"
