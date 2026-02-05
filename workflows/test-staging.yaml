@@ -17,9 +17,9 @@ spec:
   templates:
   - name: test-flow
     steps:
-      # Step 1: Integration test - verify /version endpoint returns model_valid=true
+      # Step 1: Integration test - verify /test endpoint returns valid prediction
       - - name: integration-test
-          template: check-version
+          template: check-predict
           arguments:
             parameters:
             - name: service-url
@@ -57,8 +57,8 @@ spec:
               value: "{{workflow.parameters.model-version}}"
           when: "{{steps.integration-test.outputs.result}} == fail || {{steps.resource-test.outputs.result}} == fail || {{steps.load-test.outputs.result}} == fail"
 
-  # Template: Check /version endpoint
-  - name: check-version
+  # Template: Check /test endpoint (predict with test image)
+  - name: check-predict
     inputs:
       parameters:
       - name: service-url
@@ -67,11 +67,11 @@ spec:
       command: [sh]
       source: |
         #!/bin/sh
-        echo "Testing integration: {{inputs.parameters.service-url}}/version"
+        echo "Testing integration: {{inputs.parameters.service-url}}/test"
 
         # Wait for service to be ready (max 60 seconds)
         for i in $(seq 1 12); do
-          if curl -s -f "{{inputs.parameters.service-url}}/version" > /dev/null 2>&1; then
+          if curl -s -f "{{inputs.parameters.service-url}}/test" > /dev/null 2>&1; then
             echo "Service is ready"
             break
           fi
@@ -79,16 +79,19 @@ spec:
           sleep 5
         done
 
-        # Fetch version info
-        RESPONSE=$(curl -s "{{inputs.parameters.service-url}}/version")
+        # Call /test endpoint (runs inference with hardcoded test image)
+        RESPONSE=$(curl -s "{{inputs.parameters.service-url}}/test")
         echo "Response: $RESPONSE"
 
-        # Check if model_valid is true
-        if echo "$RESPONSE" | grep -q '"model_valid": *true'; then
-          echo "✅ Integration test PASSED: model_valid=true"
+        # Verify response is not empty and is a valid food class name
+        if [ -z "$RESPONSE" ]; then
+          echo "❌ Integration test FAILED: Empty response"
+          echo "fail"
+        elif echo "$RESPONSE" | grep -qE "(Bread|Dairy product|Dessert|Egg|Fried food|Meat|Noodles/Pasta|Rice|Seafood|Soup|Vegetable/Fruit)"; then
+          echo "✅ Integration test PASSED: Got valid prediction: $RESPONSE"
           echo "pass"
         else
-          echo "❌ Integration test FAILED: model_valid=false or invalid response"
+          echo "❌ Integration test FAILED: Invalid response (not a valid food class)"
           echo "$RESPONSE"
           echo "fail"
         fi
@@ -143,10 +146,10 @@ spec:
       command: [sh]
       source: |
         #!/bin/sh
-        echo "Running load test: 100 requests, 10 concurrent"
+        echo "Running load test: 100 requests, 10 concurrent on /test endpoint"
 
-        # Run hey load test on /version endpoint (lightweight test)
-        hey -n 100 -c 10 -m GET "{{inputs.parameters.service-url}}/version" > /tmp/results.txt
+        # Run hey load test on /test endpoint (actual inference path)
+        hey -n 100 -c 10 -m GET "{{inputs.parameters.service-url}}/test" > /tmp/results.txt
 
         cat /tmp/results.txt
 
