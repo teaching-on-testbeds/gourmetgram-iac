@@ -4,6 +4,10 @@ metadata:
   generateName: kaniko-training-build-
 spec:
   entrypoint: kaniko-build-flow
+  arguments:
+    parameters:
+    - name: branch
+      value: k8s-pod-training
   volumeClaimTemplates:
   - metadata:
       name: workdir
@@ -18,10 +22,17 @@ spec:
     steps:
       - - name: clone-repo
           template: git-clone
+          arguments:
+            parameters:
+            - name: branch
+              value: "{{workflow.parameters.branch}}"
       - - name: kaniko-build
           template: kaniko
 
   - name: git-clone
+    inputs:
+      parameters:
+      - name: branch
     container:
       image: alpine/git
       command: [sh, -c]
@@ -32,7 +43,7 @@ spec:
 
           while [ $i -le $MAX_RETRIES ]; do
             echo "Attempt $i of $MAX_RETRIES: Cloning repo..."
-            git clone --branch main https://github.com/teaching-on-testbeds/mlops-chi.git /mnt/workspace && break
+            git clone --branch {{inputs.parameters.branch}} https://github.com/teaching-on-testbeds/gourmetgram-train.git /mnt/workspace && break
             echo "Git clone failed. Retrying in 5 seconds..."
             i=$((i + 1))
             sleep 5
@@ -50,8 +61,8 @@ spec:
     container:
       image: gcr.io/kaniko-project/executor:latest
       args:
-        - --dockerfile=/mnt/workspace/train/Dockerfile
-        - --context=/mnt/workspace/train
+        - --dockerfile=/mnt/workspace/Dockerfile
+        - --context=/mnt/workspace
         - --destination=registry.kube-system.svc.cluster.local:5000/gourmetgram-train:latest
         - --insecure
       volumeMounts:
