@@ -89,7 +89,7 @@ spec:
       command: [sh, -c]
       args:
         - |
-          pip install mlflow-skinny
+          pip install mlflow-skinny==3.9.0
           export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
           mkdir -p /tmp/mlflow_model
 
@@ -137,7 +137,7 @@ spec:
       image: python:3.11-slim
       command: [sh, -c]
       source: |
-        pip install mlflow-skinny > /dev/null
+        pip install mlflow-skinny==3.9.0 > /dev/null
         export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
         python -c "import mlflow; client = mlflow.tracking.MlflowClient(); client.set_registered_model_alias(name='GourmetGramFood11Model', alias='staging', version='{{inputs.parameters.model-version}}')"
   

@@ -1,4 +1,4 @@
-- name: Run Argo Workflow from GitHub Repo
+- name: Build Training Container Image Workflow
   hosts: node1
   become: yes
   vars:
@@ -15,7 +15,7 @@
         dest: "{{ repo_dest }}"
         version: main
 
-- name: Run Argo Workflow from GitHub Repo
+- name: Build Training Container Image Workflow
   hosts: node1
   become: yes
   vars:

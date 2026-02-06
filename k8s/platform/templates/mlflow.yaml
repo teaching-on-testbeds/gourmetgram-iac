@@ -16,12 +16,14 @@ spec:
     spec:
       containers:
         - name: mlflow
-          image: ghcr.io/mlflow/mlflow:v2.20.2
+          image: ghcr.io/mlflow/mlflow:v3.9.0
           ports:
             - containerPort: 8000
           env:
             - name: MLFLOW_TRACKING_URI
               value: http://0.0.0.0:8000
+            - name: MLFLOW_SERVER_ALLOWED_HOSTS
+              value: "*"
             - name: MLFLOW_S3_ENDPOINT_URL
               value: http://minio:9000
             - name: AWS_ACCESS_KEY_ID
