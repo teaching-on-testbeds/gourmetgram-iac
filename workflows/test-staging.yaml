@@ -85,13 +85,13 @@ spec:
 
         # Verify response is not empty and is a valid food class name
         if [ -z "$RESPONSE" ]; then
-          echo "❌ Integration test FAILED: Empty response"
+          echo "✗ Integration test FAILED: Empty response"
           echo "fail"
         elif echo "$RESPONSE" | grep -qE "(Bread|Dairy product|Dessert|Egg|Fried food|Meat|Noodles/Pasta|Rice|Seafood|Soup|Vegetable/Fruit)"; then
-          echo "✅ Integration test PASSED: Got valid prediction: $RESPONSE"
+          echo "✓ Integration test PASSED: Got valid prediction: $RESPONSE"
           echo "pass"
         else
-          echo "❌ Integration test FAILED: Invalid response (not a valid food class)"
+          echo "✗ Integration test FAILED: Invalid response (not a valid food class)"
           echo "$RESPONSE"
           echo "fail"
         fi
@@ -119,20 +119,20 @@ spec:
 
           # Check for OOMKilled
           if echo "$CONTAINER_STATE" | grep -q "OOMKilled"; then
-            echo "❌ Resource test FAILED: Container is OOMKilled"
+            echo "✗ Resource test FAILED: Container is OOMKilled"
             echo "fail"
           else
-            echo "✅ Resource test PASSED: Pod is Running"
+            echo "✓ Resource test PASSED: Pod is Running"
             echo "pass"
           fi
         elif [ "$POD_STATUS" = "Pending" ]; then
-          echo "❌ Resource test FAILED: Pod is Pending"
+          echo "✗ Resource test FAILED: Pod is Pending"
           echo "fail"
         elif [ -z "$POD_STATUS" ]; then
-          echo "❌ Resource test FAILED: No pod found"
+          echo "✗ Resource test FAILED: No pod found"
           echo "fail"
         else
-          echo "❌ Resource test FAILED: Pod status is $POD_STATUS"
+          echo "✗ Resource test FAILED: Pod status is $POD_STATUS"
           echo "fail"
         fi
 
@@ -168,18 +168,18 @@ spec:
 
         # Success rate must be > 95%
         if awk "BEGIN {exit !($SUCCESS_RATE < 95)}"; then
-          echo "❌ Load test FAILED: Success rate ${SUCCESS_RATE}% < 95%"
+          echo "✗ Load test FAILED: Success rate ${SUCCESS_RATE}% < 95%"
           PASS=false
         fi
 
         # P95 latency must be < 2000ms
         if awk "BEGIN {exit !($P95_MS > 2000)}"; then
-          echo "❌ Load test FAILED: P95 latency ${P95_MS}ms > 2000ms"
+          echo "✗ Load test FAILED: P95 latency ${P95_MS}ms > 2000ms"
           PASS=false
         fi
 
         if [ "$PASS" = true ]; then
-          echo "✅ Load test PASSED: Success rate ${SUCCESS_RATE}%, P95 ${P95_MS}ms"
+          echo "✓ Load test PASSED: Success rate ${SUCCESS_RATE}%, P95 ${P95_MS}ms"
           echo "pass"
         else
           echo "fail"
