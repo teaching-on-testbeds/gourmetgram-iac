@@ -7,6 +7,7 @@
     workflow_file: workflows/build-training-initial.yaml
     workflow_name: build-training-initial
     argo_namespace: argo
+    branch: mlops  # Default branch (can be overridden with -e branch=mlops-bad-arch)
 
   tasks:
     - name: Clone or update gourmetgram-iac repo
@@ -24,6 +25,7 @@
     workflow_file: workflows/build-training-initial.yaml
     workflow_name: build-training-initial
     argo_namespace: argo
+    branch: mlops  # Default branch (can be overridden with -e branch=mlops-bad-arch)
 
   tasks:
     - name: Clone or update gourmetgram-iac repo
@@ -32,8 +34,11 @@
         dest: "{{ repo_dest }}"
         version: main
 
-    - name: Submit Argo Workflow
-      command: kubectl -n {{ argo_namespace }} create -f {{ repo_dest }}/{{ workflow_file }}
+    - name: Submit Argo Workflow with branch parameter
+      shell: |
+        kubectl -n {{ argo_namespace }} create -f - <<EOF
+        $(cat {{ repo_dest }}/{{ workflow_file }} | sed 's/value: mlops/value: {{ branch }}/')
+        EOF
       register: workflow_submit
 
     - name: Extract Workflow Name
@@ -53,7 +58,7 @@
 
     - name: Display workflow phase
       debug:
-        msg: "Workflow {{ workflow_name_generated }} finished with status: {{ workflow_phase.stdout }}"
+        msg: "Workflow {{ workflow_name_generated }} (branch: {{ branch }}) finished with status: {{ workflow_phase.stdout }}"
 
     - name: Fail if workflow did not succeed
       fail:
