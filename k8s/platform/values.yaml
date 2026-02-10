@@ -3,3 +3,7 @@ minio:
 
 mlflow:
   externalIP: "0.0.0.0"
+
+gateway:
+  externalIP: "0.0.0.0"
+
