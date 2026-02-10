@@ -119,7 +119,12 @@ spec:
       image: gcr.io/kaniko-project/executor:latest
       resources:
         requests:
-          memory: "1500Mi"
+          memory: "2Gi"
+          cpu: "500m"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+
       args:
         - --dockerfile=/mnt/workspace/Dockerfile
         - --context=/mnt/workspace
