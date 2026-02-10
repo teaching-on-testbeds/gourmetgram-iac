@@ -60,7 +60,6 @@ spec:
         image: traefik:v3.0
         args:
         - --providers.kubernetesgateway
-        - --providers.kubernetesgateway.controllername=traefik.io/gateway-controller
         - --entrypoints.web.address=:8000
         ports:
         - containerPort: 8000
