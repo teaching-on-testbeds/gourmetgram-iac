@@ -52,15 +52,6 @@
       debug:
         msg: "{{ cc_id.stdout }}"
 
-- name: Install Gateway API CRDs
-  hosts: node1
-  become: yes
-  tasks:
-    - name: Apply Gateway API CRDs with kubectl
-      command: >
-        kubectl apply -f
-        https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
-
 - name: Disable IPv6 on Internet-facing interface
   hosts: all
   become: true
