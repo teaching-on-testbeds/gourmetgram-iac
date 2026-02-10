@@ -31,11 +31,20 @@ spec:
           image: postgres:18
           env:
             - name: POSTGRES_USER
-              value: "user"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
             - name: POSTGRES_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
             - name: POSTGRES_DB
-              value: "mlflowdb"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: dbname
           ports:
             - containerPort: 5432
           volumeMounts:

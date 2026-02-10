@@ -8,6 +8,8 @@
     app_name: "gourmetgram-platform"
     app_path: "k8s/platform"
     minio_access_key: "your-access-key"
+    postgres_username: "user"
+    postgres_db: "mlflowdb"
 
   tasks:
     - name: Get ArgoCD admin password from Kubernetes secret
@@ -67,16 +69,26 @@
         --from-literal=secretkey={{ minio_secret_key }}
       register: minio_secret_create
 
-    - name: Get existing MinIO secret key if already exists
-      when: minio_secret_check.rc == 0
-      command: >
-        kubectl get secret minio-credentials -n gourmetgram-platform -o jsonpath="{.data.secretkey}"
-      register: existing_secret_b64
+    - name: Check if Postgres secret already exists
+      command: kubectl get secret postgres-credentials -n gourmetgram-platform
+      register: postgres_secret_check
+      failed_when: false
+      changed_when: false
 
-    - name: Decode existing MinIO secret key
-      when: minio_secret_check.rc == 0
+    - name: Generate Postgres password
+      when: postgres_secret_check.rc != 0
       set_fact:
-        minio_secret_key: "{{ existing_secret_b64.stdout | b64decode }}"
+        postgres_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}"
+
+    - name: Create Postgres credentials secret
+      when: postgres_secret_check.rc != 0
+      command: >
+        kubectl create secret generic postgres-credentials
+        --namespace gourmetgram-platform
+        --from-literal=username={{ postgres_username }}
+        --from-literal=password={{ postgres_password }}
+        --from-literal=dbname={{ postgres_db }}
+      register: postgres_secret_create
 
     - name: Check if ArgoCD application exists
       command: >
@@ -108,9 +120,3 @@
         --helm-set-string mlflow.externalIP={{ external_ip }} \
         --port-forward --port-forward-namespace=argocd
       register: app_update
-
-    - name: Display MinIO credentials
-      debug:
-        msg: |
-          MinIO Access Key: {{ minio_access_key }}
-          MinIO Secret Key: {{ minio_secret_key }}
