@@ -5,7 +5,7 @@ image:
   tag: canary-1.0.0
 
 service:
-  port: 8080
+  port: 8081
   externalIP: ""   # Placeholder
 
 resources:

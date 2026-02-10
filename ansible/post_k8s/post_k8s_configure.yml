@@ -52,55 +52,24 @@
       debug:
         msg: "{{ cc_id.stdout }}"
 
-- name: Setup Kubernetes Dashboard
+
+---
+- name: Install Gateway API CRDs
   hosts: node1
-  become: yes
+  gather_facts: false
+
+  vars:
+    gateway_api_version: v1.1.0
+    kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/config', true) }}"
+
   tasks:
-    - name: Create dashboard admin-user and RBAC
-      become: yes
-      shell: |
-        kubectl apply -f - <<EOF
-        apiVersion: v1
-        kind: ServiceAccount
-        metadata:
-          name: admin-user
-          namespace: kube-system
-        ---
-        apiVersion: rbac.authorization.k8s.io/v1
-        kind: ClusterRoleBinding
-        metadata:
-          name: admin-user
-        roleRef:
-          apiGroup: rbac.authorization.k8s.io
-          kind: ClusterRole
-          name: cluster-admin
-        subjects:
-        - kind: ServiceAccount
-          name: admin-user
-          namespace: kube-system
-        EOF
-      args:
-        executable: /bin/bash
+  - name: Apply Gateway API CRDs
+    kubernetes.core.k8s:
+      kubeconfig: "{{ kubeconfig }}"
+      state: present
+      src: "https://github.com/kubernetes-sigs/gateway-api/releases/download/{{ gateway_api_version }}/standard-install.yaml"
 
-    - name: Wait for Kubernetes Dashboard pod to be running
-      shell: |
-        kubectl get pods -n kube-system -l k8s-app=kubernetes-dashboard -o jsonpath='{.items[0].status.phase}'
-      register: dashboard_status
-      retries: 10
-      delay: 10
-      until: dashboard_status.stdout == "Running"
-
-    - name: Create token for dashboard access
-      shell: |
-        kubectl -n kube-system create token admin-user
-      register: dashboard_token
-      changed_when: false
-
-    - name: Display dashboard token
-      debug:
-        msg: "Dashboard token: {{ dashboard_token.stdout }}"
-
-
+---
 - name: Disable IPv6 on Internet-facing interface
   hosts: all
   become: true
@@ -165,6 +134,55 @@
 
     - name: Wait for CoreDNS to be ready
       shell: kubectl -n kube-system rollout status deployment/coredns --timeout=120s
+
+---
+- name: Setup Kubernetes Dashboard
+  hosts: node1
+  become: yes
+  tasks:
+    - name: Create dashboard admin-user and RBAC
+      become: yes
+      shell: |
+        kubectl apply -f - <<EOF
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: admin-user
+          namespace: kube-system
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        metadata:
+          name: admin-user
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: cluster-admin
+        subjects:
+        - kind: ServiceAccount
+          name: admin-user
+          namespace: kube-system
+        EOF
+      args:
+        executable: /bin/bash
+
+    - name: Wait for Kubernetes Dashboard pod to be running
+      shell: |
+        kubectl get pods -n kube-system -l k8s-app=kubernetes-dashboard -o jsonpath='{.items[0].status.phase}'
+      register: dashboard_status
+      retries: 10
+      delay: 10
+      until: dashboard_status.stdout == "Running"
+
+    - name: Create token for dashboard access
+      shell: |
+        kubectl -n kube-system create token admin-user
+      register: dashboard_token
+      changed_when: false
+
+    - name: Display dashboard token
+      debug:
+        msg: "Dashboard token: {{ dashboard_token.stdout }}"
 
 
 - name: Install ArgoCD CLI

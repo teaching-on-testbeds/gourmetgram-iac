@@ -1,3 +1,4 @@
 apiVersion: v2
-name: mlflow
+name: gourmetgram-platform
 version: 1.0.0
+description: Gourmetgram Platform Services

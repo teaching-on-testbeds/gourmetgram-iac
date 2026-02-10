@@ -5,7 +5,7 @@ image:
   tag: staging-1.0.0
 
 service:
-  port: 8081
+  port: 8082
   externalIP: ""   # Placeholder
 
 resources:
