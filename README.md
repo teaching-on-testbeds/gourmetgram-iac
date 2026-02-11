@@ -15,11 +15,11 @@ Infrastructure-as-code for the GourmetGram MLOps course project. This repo provi
 ## Prereqs
 
 - Terraform (v1.14.4)
-- Ansible (`ansible-core==2.17.7` and `ansible==10.7.0`)
+- Ansible (`ansible-core==2.16.9` and `ansible==9.8.0`, for Kubespray 2.26.0)
 - OpenStack credentials configured for Terraform (`clouds.yaml`)
-- SSH access to the provisioned nodes (`ansible.cfg`)
+- SSH access to the provisioned nodes (keys and correctly configured `ansible.cfg`)
 
 ## Notes / safety
 
-- This repo is designed for a course/lab environment. Some defaults are intentionally permissive (e.g., insecure Docker registry config, dashboard admin token creation, public DNS forwarders).
+- This repo is designed for a course/lab environment. Some defaults are intentionally permissive (e.g., insecure Docker registry config, secrets printed in Ansible outputs).
 - Never commit real credentials/secrets.

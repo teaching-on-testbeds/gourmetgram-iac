@@ -4,8 +4,8 @@
   vars:
     repo_url: https://github.com/teaching-on-testbeds/gourmetgram-iac.git
     repo_dest: /tmp/gourmetgram-iac
-    workflow_file: workflows/build-training-initial.yaml
-    workflow_name: build-training-initial
+    workflow_file: workflows/build-training-initial-buildkit.yaml
+    workflow_name: build-training-initial-buildkit
     argo_namespace: argo
     branch: mlops  # Default branch (can be overridden with -e branch=mlops-bad-arch)
 
