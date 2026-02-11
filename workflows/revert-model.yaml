@@ -84,36 +84,56 @@ spec:
 
         python << 'EOF'
         import mlflow
+        import sys
 
         client = mlflow.tracking.MlflowClient()
         failed_version = "{{inputs.parameters.failed-version}}"
         environment = "{{inputs.parameters.environment}}"
-
-        # Get all versions of the model, sorted by version number descending
         model_name = "GourmetGramFood11Model"
-        versions = client.search_model_versions(f"name='{model_name}'")
 
-        # Sort by version number (descending)
-        versions_sorted = sorted(versions, key=lambda v: int(v.version), reverse=True)
-
-        # Find the version right before the failed version
-        failed_version_int = int(failed_version)
-        previous_version = None
-
-        for v in versions_sorted:
-            v_int = int(v.version)
-            if v_int < failed_version_int:
-                previous_version = v.version
-                break
-
-        if previous_version is None:
-            print(f"ERROR: No previous version found before version {failed_version}")
-            print("Cannot revert - this is the first version")
+        # First, try to find the last version that was successfully approved for this environment
+        approved_alias = f"{environment}-approved"
+        
+        try:
+            # Get all versions of the model
+            versions = client.search_model_versions(f"name='{model_name}'")
+            
+            # Find the version with the {environment}-approved alias
+            previous_version = None
+            for v in versions:
+                if v.aliases and approved_alias in v.aliases:
+                    previous_version = v.version
+                    print(f"Found last approved {environment} version: {previous_version}", file=sys.stderr)
+                    print(f"This version previously passed all {environment} tests", file=sys.stderr)
+                    break
+            
+            if previous_version is None:
+                # Fallback: No approved version exists yet (first deployment scenario)
+                # Find the highest version number less than the failed version
+                print(f"WARNING: No '{approved_alias}' alias found", file=sys.stderr)
+                print(f"Falling back to numerically previous version", file=sys.stderr)
+                
+                versions_sorted = sorted(versions, key=lambda v: int(v.version), reverse=True)
+                failed_version_int = int(failed_version)
+                
+                for v in versions_sorted:
+                    v_int = int(v.version)
+                    if v_int < failed_version_int:
+                        previous_version = v.version
+                        break
+                
+                if previous_version is None:
+                    print(f"ERROR: No previous version found before version {failed_version}", file=sys.stderr)
+                    print("Cannot revert - this is the first version", file=sys.stderr)
+                    exit(1)
+                    
+                print(f"Found fallback version: {previous_version}", file=sys.stderr)
+            
+            print(previous_version)
+            
+        except Exception as e:
+            print(f"ERROR: Failed to find previous version: {e}", file=sys.stderr)
             exit(1)
-
-        import sys
-        print(f"Found previous {environment} version: {previous_version}", file=sys.stderr)
-        print(previous_version)
         EOF
 
   # Template: Verify previous container image exists using skopeo
