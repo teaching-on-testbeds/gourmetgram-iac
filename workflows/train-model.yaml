@@ -8,15 +8,15 @@ spec:
   templates:
   - name: training-and-build
     steps:
-      - - name: run-training
+      - - name: run_training
           template: run-training
       - - name: build-container
           template: trigger-build
           arguments:
             parameters:
             - name: model-version
-              value: "{{steps.run-training.outputs.parameters.model_version}}"
-          when: "{{steps.run-training.outputs.parameters.model_version}} != ''"
+              value: "{{steps.run_training.outputs.parameters.model_version}}"
+          when: "{{steps.run_training.outputs.parameters.model_version}} != ''"
 
   - name: run-training
     outputs:
