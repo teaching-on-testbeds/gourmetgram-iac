@@ -45,6 +45,12 @@ spec:
 
   # Template: Shallow clone of the git repository for faster checkout
   - name: git-clone
+    retries:
+      limit: 5
+      retryPolicy: "Always"
+      backoff:
+        duration: "10s"
+        factor: 2
     inputs:
       parameters:
       - name: branch
@@ -72,6 +78,12 @@ spec:
 
   # Template: Build container image using buildkit (rootless, no docker daemon required)
   - name: buildkit-rootless
+    retries:
+      limit: 3
+      retryPolicy: "Always"
+      backoff:
+        duration: "30s"
+        factor: 2
     container:
       image: moby/buildkit:rootless
       env:
