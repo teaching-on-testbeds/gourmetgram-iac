@@ -19,6 +19,13 @@ spec:
           image: ghcr.io/mlflow/mlflow:v3.9.0
           ports:
             - containerPort: 8000
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
           env:
             - name: MLFLOW_TRACKING_URI
               value: http://0.0.0.0:8000
