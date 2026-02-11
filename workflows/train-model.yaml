@@ -15,15 +15,15 @@ spec:
           arguments:
             parameters:
             - name: model-version
-              value: "{{steps.run-training.outputs.parameters.model-version}}"
-          when: "{{steps.run-training.outputs.parameters.model-version}} != ''"
+              value: "{{steps.run-training.outputs.parameters.model_version}}"
+          when: "{{steps.run-training.outputs.parameters.model_version}} != ''"
 
   - name: run-training
     outputs:
       parameters:
-      - name: model-version
+      - name: model_version
         valueFrom:
-          path: /var/run/argo/outputs/parameters/model-version
+          path: /var/run/argo/outputs/parameters/model_version
     container:
       image: registry.kube-system.svc.cluster.local:5000/gourmetgram-train:latest
       command: [sh, -c]
@@ -36,10 +36,10 @@ spec:
           # under /var/run/argo/outputs/parameters/
           mkdir -p /var/run/argo/outputs/parameters
           if [ -f /tmp/model_version ]; then
-            cp /tmp/model_version /var/run/argo/outputs/parameters/model-version
+            cp /tmp/model_version /var/run/argo/outputs/parameters/model_version
           else
             # Avoid hard failure if training didn't emit a version.
-            : > /var/run/argo/outputs/parameters/model-version
+            : > /var/run/argo/outputs/parameters/model_version
           fi
       env:
         - name: MLFLOW_TRACKING_URI
