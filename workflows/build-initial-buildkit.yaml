@@ -28,23 +28,49 @@ spec:
   templates:
   - name: buildkit-rootless-build-flow
     steps:
+      # Step 1: Clone the repository (shallow clone for speed)
       - - name: clone-repo
           template: git-clone
+      # Step 2: Build the container image and push to registry as staging-1.0.0
       - - name: buildkit-build
           template: buildkit-rootless
+      # Step 3: Copy the same image to canary and production tags (runs in parallel, no rebuild)
+      - - name: tag-canary
+          template: copy-tag
+          arguments:
+            parameters:
+            - name: src-tag
+              value: staging-1.0.0
+            - name: dst-tag
+              value: canary-1.0.0
+        - name: tag-production
+          template: copy-tag
+          arguments:
+            parameters:
+            - name: src-tag
+              value: staging-1.0.0
+            - name: dst-tag
+              value: production-1.0.0
 
+  # Template: Shallow clone of the git repository for faster checkout
   - name: git-clone
     container:
-      image: alpine/git
-      command: [sh, -c]
+      image: alpine/git:v2.26.2
+      workingDir: /mnt/workspace
       args:
-        - |
-          set -eu
-          git clone --branch master https://github.com/teaching-on-testbeds/gourmetgram.git /mnt/workspace
+        - clone
+        - --depth
+        - "1"
+        - --branch
+        - master
+        - --single-branch
+        - https://github.com/teaching-on-testbeds/gourmetgram.git
+        - .
       volumeMounts:
       - name: workdir
         mountPath: /mnt/workspace
 
+  # Template: Build container image using buildkit (rootless, no docker daemon required)
   - name: buildkit-rootless
     container:
       image: moby/buildkit:rootless
@@ -61,13 +87,11 @@ spec:
         - --local
         - dockerfile=/mnt/workspace
         - --output
-        - >-
-          type=image,
-          "name=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.0,
-          registry.kube-system.svc.cluster.local:5000/gourmetgram-app:canary-1.0.0,
-          registry.kube-system.svc.cluster.local:5000/gourmetgram-app:production-1.0.0",
-          push=true,
-          registry.insecure=true
+        - type=image,name=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.0,push=true,registry.insecure=true
+        - --export-cache
+        - type=inline
+        - --import-cache
+        - type=registry,ref=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:buildcache,registry.insecure=true
       resources:
         requests:
           memory: "3Gi"
@@ -87,3 +111,18 @@ spec:
         mountPath: /mnt/workspace
       - name: buildkitd
         mountPath: /home/user/.local/share/buildkit
+
+  # Template: Copy image to a new tag without rebuilding (uses crane)
+  - name: copy-tag
+    inputs:
+      parameters:
+      - name: src-tag
+      - name: dst-tag
+    container:
+      image: gcr.io/go-containerregistry/crane:debug
+      command: [sh, -c]
+      args:
+        - |
+          crane copy --insecure \
+            registry.kube-system.svc.cluster.local:5000/gourmetgram-app:{{inputs.parameters.src-tag}} \
+            registry.kube-system.svc.cluster.local:5000/gourmetgram-app:{{inputs.parameters.dst-tag}}
