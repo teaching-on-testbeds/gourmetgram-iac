@@ -118,6 +118,11 @@
   hosts: node1
   become: yes
   tasks:
+    - name: Get CoreDNS service ClusterIP
+      command: kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}'
+      register: coredns_ip
+      changed_when: false
+
     - name: Patch nodelocaldns ConfigMap to add AAAA template
       command: >
         kubectl -n kube-system patch configmap nodelocaldns
@@ -136,7 +141,7 @@
                   reload
                   loop
                   bind 169.254.25.10
-                  forward . 10.233.0.3 {
+                  forward . {{ coredns_ip.stdout }} {
                       force_tcp
                   }
                   prometheus :9253
@@ -148,7 +153,7 @@
                   reload
                   loop
                   bind 169.254.25.10
-                  forward . 10.233.0.3 {
+                  forward . {{ coredns_ip.stdout }} {
                       force_tcp
                   }
                   prometheus :9253
@@ -159,7 +164,7 @@
                   reload
                   loop
                   bind 169.254.25.10
-                  forward . 10.233.0.3 {
+                  forward . {{ coredns_ip.stdout }} {
                       force_tcp
                   }
                   prometheus :9253
