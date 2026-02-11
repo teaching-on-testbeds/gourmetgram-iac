@@ -1,11 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
-  name: revert-staging
+  name: revert-model
 spec:
   entrypoint: revert-flow
   arguments:
     parameters:
+    - name: environment
+      value: "staging"
     - name: failed-model-version
     - name: failure-reason
       value: "Tests failed"
@@ -13,29 +15,35 @@ spec:
   templates:
   - name: revert-flow
     steps:
-      # Step 1: Find previous staging version from MLFlow model history
+      # Step 1: Find previous version from MLFlow model history for this environment
       - - name: get-previous-version
-          template: find-previous-staging-version
+          template: find-previous-version
           arguments:
             parameters:
             - name: failed-version
               value: "{{workflow.parameters.failed-model-version}}"
+            - name: environment
+              value: "{{workflow.parameters.environment}}"
 
       # Step 2: Verify previous container image exists using skopeo
       - - name: verify-previous-image
-          template: skopeo-retag
+          template: skopeo-verify
           arguments:
             parameters:
             - name: previous-version
               value: "{{steps.get-previous-version.outputs.result}}"
+            - name: environment
+              value: "{{workflow.parameters.environment}}"
 
-      # Step 3: Deploy previous version to staging
+      # Step 3: Deploy previous version to environment
       - - name: deploy-previous
           template: trigger-deploy
           arguments:
             parameters:
             - name: model-version
               value: "{{steps.get-previous-version.outputs.result}}"
+            - name: environment
+              value: "{{workflow.parameters.environment}}"
 
       # Step 4: Update MLFlow alias to point back to previous version
       - - name: update-mlflow-alias
@@ -44,6 +52,8 @@ spec:
             parameters:
             - name: model-version
               value: "{{steps.get-previous-version.outputs.result}}"
+            - name: environment
+              value: "{{workflow.parameters.environment}}"
 
       # Step 5: Log failure for debugging
       - - name: log-failure
@@ -56,12 +66,15 @@ spec:
               value: "{{steps.get-previous-version.outputs.result}}"
             - name: reason
               value: "{{workflow.parameters.failure-reason}}"
+            - name: environment
+              value: "{{workflow.parameters.environment}}"
 
-  # Template: Find previous staging version from MLFlow
-  - name: find-previous-staging-version
+  # Template: Find previous version from MLFlow for the given environment
+  - name: find-previous-version
     inputs:
       parameters:
       - name: failed-version
+      - name: environment
     script:
       image: python:3.11-slim
       command: [sh, -c]
@@ -74,6 +87,7 @@ spec:
 
         client = mlflow.tracking.MlflowClient()
         failed_version = "{{inputs.parameters.failed-version}}"
+        environment = "{{inputs.parameters.environment}}"
 
         # Get all versions of the model, sorted by version number descending
         model_name = "GourmetGramFood11Model"
@@ -98,36 +112,41 @@ spec:
             exit(1)
 
         import sys
-        print(f"Found previous staging version: {previous_version}", file=sys.stderr)
+        print(f"Found previous {environment} version: {previous_version}", file=sys.stderr)
         print(previous_version)
         EOF
 
   # Template: Verify previous container image exists using skopeo
-  - name: skopeo-retag
+  - name: skopeo-verify
     inputs:
       parameters:
       - name: previous-version
+      - name: environment
     container:
       image: quay.io/skopeo/stable
       command: [sh, -c]
       args:
         - |
-          echo "Verifying previous staging image exists: staging-1.0.{{inputs.parameters.previous-version}}"
+          ENV="{{inputs.parameters.environment}}"
+          TAG="${ENV}-1.0.{{inputs.parameters.previous-version}}"
+          
+          echo "Verifying previous ${ENV} image exists: ${TAG}"
 
-          # Inspect the previous staging image to verify it exists in the registry
+          # Inspect the previous image to verify it exists in the registry
           # This will fail fast with a clear error if the image is missing
           skopeo inspect \
             --tls-verify=false \
-            docker://registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.{{inputs.parameters.previous-version}}
+            docker://registry.kube-system.svc.cluster.local:5000/gourmetgram-app:${TAG}
 
-          echo "✓ Previous staging image verified: staging-1.0.{{inputs.parameters.previous-version}}"
-          echo "Ready to revert staging to this version"
+          echo "✓ Previous ${ENV} image verified: ${TAG}"
+          echo "Ready to revert ${ENV} to this version"
 
-  # Template: Update MLFlow staging alias to previous version
+  # Template: Update MLFlow alias to previous version
   - name: set-mlflow-alias
     inputs:
       parameters:
       - name: model-version
+      - name: environment
     script:
       image: python:3.11-slim
       command: [sh, -c]
@@ -135,15 +154,16 @@ spec:
         pip install mlflow-skinny > /dev/null
         export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
 
-        python -c "import mlflow; client = mlflow.tracking.MlflowClient(); client.set_registered_model_alias(name='GourmetGramFood11Model', alias='staging', version='{{inputs.parameters.model-version}}')"
+        python -c "import mlflow; client = mlflow.tracking.MlflowClient(); client.set_registered_model_alias(name='GourmetGramFood11Model', alias='{{inputs.parameters.environment}}', version='{{inputs.parameters.model-version}}')"
 
-        echo "Updated MLFlow staging alias to version {{inputs.parameters.model-version}}"
+        echo "Updated MLFlow {{inputs.parameters.environment}} alias to version {{inputs.parameters.model-version}}"
 
   # Template: Trigger deploy-container-image workflow
   - name: trigger-deploy
     inputs:
       parameters:
       - name: model-version
+      - name: environment
     resource:
       action: create
       manifest: |
@@ -157,7 +177,7 @@ spec:
           arguments:
             parameters:
             - name: environment
-              value: "staging"
+              value: "{{inputs.parameters.environment}}"
             - name: model-version
               value: "{{inputs.parameters.model-version}}"
 
@@ -168,13 +188,17 @@ spec:
       - name: failed-version
       - name: reverted-to-version
       - name: reason
+      - name: environment
     script:
       image: alpine:latest
       command: [sh]
       source: |
         #!/bin/sh
+        ENV="{{inputs.parameters.environment}}"
+        ENV_UPPER=$(echo "$ENV" | tr '[:lower:]' '[:upper:]')
+        
         echo "=========================================="
-        echo "STAGING REVERT PERFORMED"
+        echo "${ENV_UPPER} REVERT PERFORMED"
         echo "=========================================="
         echo "Failed model version: {{inputs.parameters.failed-version}}"
         echo "Reverted to version: {{inputs.parameters.reverted-to-version}}"
@@ -185,5 +209,5 @@ spec:
         echo "Action items:"
         echo "1. Review test logs to identify failure cause"
         echo "2. Fix model/code issues before redeploying version {{inputs.parameters.failed-version}}"
-        echo "3. Staging environment is now running version {{inputs.parameters.reverted-to-version}}"
+        echo "3. ${ENV_UPPER} environment is now running version {{inputs.parameters.reverted-to-version}}"
         echo "=========================================="
