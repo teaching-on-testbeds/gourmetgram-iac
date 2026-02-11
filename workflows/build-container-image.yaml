@@ -118,24 +118,39 @@ spec:
       args:
         - |
           set -eu
-          pip install mlflow-skinny==3.9.0
+          pip install mlflow-skinny==3.9.0 > /dev/null
           export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
+          export MODEL_VERSION='{{inputs.parameters.model-version}}'
           mkdir -p /tmp/mlflow_model
 
-          echo "Downloading MLflow model artifacts..."
-          mlflow artifacts download \
-            --artifact-uri models:/GourmetGramFood11Model/{{inputs.parameters.model-version}} \
-            -d /tmp/mlflow_model || { echo "MLflow download failed"; exit 1; }
+          python - <<'PY'
+          import os
+          import sys
+          import mlflow
+          from mlflow.tracking import MlflowClient
 
-          echo "Searching for model.pth..."
-          FOUND=$(find /tmp/mlflow_model/data -name model.pth | head -n 1)
-          if [ -z "$FOUND" ]; then
-            echo "ERROR: model.pth not found in MLflow artifacts"; exit 1
-          fi
+          NAME = "GourmetGramFood11Model"
+          VERSION = os.environ["MODEL_VERSION"]
 
-          echo "Copying model.pth to app/ as food11.pth..."
-          cp "$FOUND" /mnt/workspace/food11.pth
-          echo "1.0.{{inputs.parameters.model-version}}" > /mnt/workspace/versions.txt
+          client = MlflowClient()
+          mv = client.get_model_version(NAME, VERSION)
+
+          print(f"Model version: {VERSION}", file=sys.stderr)
+          print(f"Model source: {mv.source}", file=sys.stderr)
+
+          # Download the model artifact directly using the source URI
+          # Source is like: runs:/{run_id}/model/food11.pth
+          downloaded_path = mlflow.artifacts.download_artifacts(
+              artifact_uri=mv.source,
+              dst_path="/mnt/workspace"
+          )
+          
+          print(f"Downloaded model to: {downloaded_path}", file=sys.stderr)
+
+          # Write version file
+          with open("/mnt/workspace/versions.txt", "w", encoding="utf-8") as f:
+              f.write(f"1.0.{VERSION}\n")
+          PY
       volumeMounts:
       - name: workdir
         mountPath: /mnt/workspace
