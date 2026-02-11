@@ -20,10 +20,10 @@ rules:
   resources: ["services","endpoints","pods","nodes","secrets"]
   verbs: ["get","list","watch"]
 - apiGroups: ["gateway.networking.k8s.io"]
-  resources: ["gatewayclasses","gateways","httproutes","referencegrants"]
+  resources: ["gatewayclasses","gateways","httproutes","referencegrants","tcproutes","tlsroutes","grpcroutes"]
   verbs: ["get","list","watch"]
 - apiGroups: ["gateway.networking.k8s.io"]
-  resources: ["gateways/status","httproutes/status"]
+  resources: ["gatewayclasses/status","gateways/status","httproutes/status","tcproutes/status","tlsroutes/status","grpcroutes/status"]
   verbs: ["update","patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -60,8 +60,8 @@ spec:
         image: traefik:v3.0
         args:
         - --providers.kubernetesgateway
-        - --providers.kubernetesgateway.entrypoints=web
         - --entrypoints.web.address=:8000
+        - --log.level=DEBUG
         ports:
         - containerPort: 8000
 ---
@@ -88,8 +88,8 @@ metadata:
 spec:
   gatewayClassName: traefik
   listeners:
-  - name: http
-    port: 80
+  - name: web
+    port: 8000
     protocol: HTTP
     allowedRoutes:
       namespaces:

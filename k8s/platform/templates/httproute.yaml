@@ -6,8 +6,6 @@ metadata:
 spec:
   parentRefs:
   - name: gourmetgram-gateway
-  hostnames:
-  - gourmetgram.example.com
   rules:
   - backendRefs:
     - name: gourmetgram-app
