@@ -23,10 +23,24 @@ spec:
       parameters:
       - name: model-version
         valueFrom:
-          path: /tmp/model_version
+          path: /var/run/argo/outputs/parameters/model-version
     container:
       image: registry.kube-system.svc.cluster.local:5000/gourmetgram-train:latest
-      command: [python, flow.py]
+      command: [sh, -c]
+      args:
+        - |
+          set -eu
+          python flow.py
+
+          # Argo (emissary executor) requires output parameters to be written
+          # under /var/run/argo/outputs/parameters/
+          mkdir -p /var/run/argo/outputs/parameters
+          if [ -f /tmp/model_version ]; then
+            cp /tmp/model_version /var/run/argo/outputs/parameters/model-version
+          else
+            # Avoid hard failure if training didn't emit a version.
+            : > /var/run/argo/outputs/parameters/model-version
+          fi
       env:
         - name: MLFLOW_TRACKING_URI
           value: "http://mlflow.gourmetgram-platform.svc.cluster.local:8000"
