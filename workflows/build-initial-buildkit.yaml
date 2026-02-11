@@ -107,7 +107,7 @@ spec:
         - type=registry,ref=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:buildcache,registry.insecure=true
       resources:
         requests:
-          memory: "3Gi"
+          memory: "2Gi"
           cpu: "500m"
         limits:
           memory: "3Gi"

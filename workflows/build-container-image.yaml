@@ -177,8 +177,8 @@ spec:
           memory: "2Gi"
           cpu: "500m"
         limits:
-          memory: "4Gi"
-          cpu: "2"
+          memory: "3Gi"
+          cpu: "1"
 
       command: [buildctl-daemonless.sh]
       args:
