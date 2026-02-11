@@ -5,6 +5,13 @@ metadata:
 spec:
   entrypoint: buildkit-rootless-build-flow
 
+  # Compatibility: some clusters ignore seccompProfile/appArmorProfile fields
+  # (or enforce defaults) unless annotations are also set.
+  podMetadata:
+    annotations:
+      seccomp.security.alpha.kubernetes.io/pod: unconfined
+      container.apparmor.security.beta.kubernetes.io/main: unconfined
+
   volumeClaimTemplates:
   - metadata:
       name: workdir
@@ -66,6 +73,8 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         seccompProfile:
+          type: Unconfined
+        appArmorProfile:
           type: Unconfined
       volumeMounts:
       - name: workdir
