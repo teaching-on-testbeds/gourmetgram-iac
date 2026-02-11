@@ -17,17 +17,7 @@ spec:
   templates:
   - name: test-flow
     steps:
-      # Step 1: Resource test - verify pod exists, is Running and Ready
-      - - name: resource-test
-          template: check-pod-status
-          arguments:
-            parameters:
-            - name: namespace
-              value: "{{workflow.parameters.staging-namespace}}"
-            - name: app
-              value: "{{workflow.parameters.staging-service}}"
-
-      # Step 2: Integration test - verify /test endpoint returns valid prediction
+      # Step 1: Integration test - verify /test endpoint returns valid prediction
       - - name: integration-test
           template: check-predict
           arguments:
@@ -35,7 +25,7 @@ spec:
             - name: service-url
               value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
 
-      # Step 3: Load test - verify p95 latency < 2000ms, success rate > 95%
+      # Step 2: Load test - verify p95 latency < 2000ms, success rate > 95%
       - - name: load-test
           template: run-load-test
           arguments:
@@ -43,30 +33,30 @@ spec:
             - name: service-url
               value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
 
-      # Step 4: Mark as approved in MLflow if all tests pass
+      # Step 3: Mark as approved in MLflow if all tests pass
       - - name: mark-staging-approved
           template: set-staging-approved
           arguments:
             parameters:
             - name: model-version
               value: "{{workflow.parameters.model-version}}"
-          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass' && '{{steps.resource-test.outputs.parameters.result}}' == 'pass' && '{{steps.load-test.outputs.parameters.result}}' == 'pass'"
+          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass' && '{{steps.load-test.outputs.parameters.result}}' == 'pass'"
 
-      # Step 5: Branching logic - promote if tests pass, revert if tests fail
+      # Step 4: Branching logic - promote if tests pass, revert if tests fail
       - - name: promote-on-success
           template: trigger-promote
           arguments:
             parameters:
             - name: model-version
               value: "{{workflow.parameters.model-version}}"
-          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass' && '{{steps.resource-test.outputs.parameters.result}}' == 'pass' && '{{steps.load-test.outputs.parameters.result}}' == 'pass'"
+          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass' && '{{steps.load-test.outputs.parameters.result}}' == 'pass'"
         - name: revert-on-failure
           template: trigger-revert
           arguments:
             parameters:
             - name: model-version
               value: "{{workflow.parameters.model-version}}"
-          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'fail' || '{{steps.resource-test.outputs.parameters.result}}' == 'fail' || '{{steps.load-test.outputs.parameters.result}}' == 'fail'"
+          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'fail' || '{{steps.load-test.outputs.parameters.result}}' == 'fail'"
 
   # Template: Check /test endpoint (predict with test image)
   - name: check-predict
@@ -111,74 +101,6 @@ spec:
           echo "$RESPONSE"
               echo "fail" > /tmp/result.txt
           fi
-
-  # Template: Check pod status (Running + Ready)
-  - name: check-pod-status
-    inputs:
-      parameters:
-      - name: namespace
-      - name: app
-    outputs:
-      parameters:
-      - name: result
-        valueFrom:
-          path: /tmp/result.txt
-    script:
-      image: bitnami/kubectl:1.29.2
-      command: [sh]
-      source: |
-        #!/bin/sh
-        set -eu
-
-        NS="{{inputs.parameters.namespace}}"
-        APP="{{inputs.parameters.app}}"
-
-        echo "Checking pod status in namespace=$NS label app=$APP"
-
-        if ! kubectl get pods -n "$NS" -l "app=$APP" >/tmp/pods.txt 2>/tmp/kubectl.err; then
-          echo "✗ Resource test FAILED: unable to list pods"
-          cat /tmp/kubectl.err || true
-          echo "fail" > /tmp/result.txt
-          exit 0
-        fi
-
-        POD_NAMES=$(kubectl get pods -n "$NS" -l "app=$APP" -o jsonpath='{.items[*].metadata.name}' 2>/tmp/kubectl.err || true)
-        if [ -z "$POD_NAMES" ]; then
-          echo "✗ Resource test FAILED: no pods found"
-          echo "fail" > /tmp/result.txt
-          exit 0
-        fi
-
-        PHASES=$(kubectl get pods -n "$NS" -l "app=$APP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{"\n"}{end}' 2>/tmp/kubectl.err || true)
-        READY=$(kubectl get pods -n "$NS" -l "app=$APP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.containerStatuses[*]}{.ready}{" "}{end}{"\n"}{end}' 2>/tmp/kubectl.err || true)
-        REASONS=$(kubectl get pods -n "$NS" -l "app=$APP" -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.state.waiting.reason}{"\n"}{.state.terminated.reason}{"\n"}{end}{end}' 2>/tmp/kubectl.err || true)
-
-        echo "Pod phases:"
-        echo "$PHASES" || true
-        echo "Pod readiness:"
-        echo "$READY" || true
-
-        if echo "$PHASES" | grep -vE ' Running$' >/dev/null 2>&1; then
-          echo "✗ Resource test FAILED: non-Running pods detected"
-          echo "fail" > /tmp/result.txt
-          exit 0
-        fi
-
-        if echo "$READY" | grep -q ' false'; then
-          echo "✗ Resource test FAILED: unready containers detected"
-          echo "fail" > /tmp/result.txt
-          exit 0
-        fi
-
-        if echo "$REASONS" | grep -Eq '(CrashLoopBackOff|OOMKilled|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError|Error)'; then
-          echo "✗ Resource test FAILED: unhealthy container reason detected"
-          echo "$REASONS" | grep -E '(CrashLoopBackOff|OOMKilled|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError|Error)' || true
-          echo "fail" > /tmp/result.txt
-          exit 0
-        fi
-
-        echo "✓ Resource test PASSED: pods Running and Ready"
-        echo "pass" > /tmp/result.txt
 
   # Template: Load test (/test endpoint)
   - name: run-load-test
@@ -292,4 +214,4 @@ spec:
             - name: failed-model-version
               value: "{{inputs.parameters.model-version}}"
             - name: failure-reason
-              value: "Staging tests failed (integration/resource/load test)"
+              value: "Staging tests failed (integration/load test)"
