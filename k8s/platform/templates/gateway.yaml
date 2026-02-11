@@ -17,7 +17,10 @@ metadata:
   name: gourmetgram-gateway-controller
 rules:
 - apiGroups: [""]
-  resources: ["services","endpoints","pods","nodes","secrets"]
+  resources: ["services","endpoints","pods","nodes","secrets","namespaces"]
+  verbs: ["get","list","watch"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get","list","watch"]
 - apiGroups: ["gateway.networking.k8s.io"]
   resources: ["gatewayclasses","gateways","httproutes","referencegrants","tcproutes","tlsroutes","grpcroutes"]
