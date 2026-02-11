@@ -57,6 +57,7 @@ spec:
     container:
       image: alpine/git:v2.26.2
       workingDir: /mnt/workspace
+      command: [git]
       args:
         - clone
         - --depth
@@ -120,9 +121,9 @@ spec:
       - name: dst-tag
     container:
       image: gcr.io/go-containerregistry/crane:debug
-      command: [sh, -c]
+      command: [crane]
       args:
-        - |
-          crane copy --insecure \
-            registry.kube-system.svc.cluster.local:5000/gourmetgram-app:{{inputs.parameters.src-tag}} \
-            registry.kube-system.svc.cluster.local:5000/gourmetgram-app:{{inputs.parameters.dst-tag}}
+        - copy
+        - --insecure
+        - registry.kube-system.svc.cluster.local:5000/gourmetgram-app:{{inputs.parameters.src-tag}}
+        - registry.kube-system.svc.cluster.local:5000/gourmetgram-app:{{inputs.parameters.dst-tag}}
