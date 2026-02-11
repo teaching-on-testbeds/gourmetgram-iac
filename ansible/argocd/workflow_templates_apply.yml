@@ -13,7 +13,6 @@
       - promote-model.yaml
       - train-model.yaml
       - test-staging.yaml
-      - revert-model.yaml
       - cron-train.yaml
 
   tasks:
