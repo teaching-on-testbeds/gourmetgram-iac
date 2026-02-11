@@ -49,7 +49,16 @@ spec:
       # Step 3: Run training
       - - name: run-training
           template: run-training
-      # Step 4: Trigger app container build if model was registered
+      # Step 4: Tag model as development in MLflow (latest trained)
+      - - name: tag-model-development
+          template: set-development-alias
+          arguments:
+            parameters:
+            - name: model-version
+              value: "{{steps.run-training.outputs.parameters.modelversion}}"
+          when: "'{{steps.run-training.outputs.parameters.modelversion}}' != ''"
+
+      # Step 5: Trigger app container build if model was registered
       - - name: build-container
           template: trigger-build
           arguments:
@@ -238,3 +247,20 @@ spec:
             parameters:
             - name: model-version
               value: "{{inputs.parameters.model-version}}"
+
+  - name: set-development-alias
+    inputs:
+      parameters:
+      - name: model-version
+    script:
+      image: python:3.11-slim
+      command: [sh, -c]
+      source: |
+        set -eu
+        export PIP_DISABLE_PIP_VERSION_CHECK=1
+        pip install mlflow-skinny==3.9.0 > /dev/null
+        export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
+
+        python -c "import mlflow; client = mlflow.tracking.MlflowClient(); client.set_registered_model_alias(name='GourmetGramFood11Model', alias='development', version='{{inputs.parameters.model-version}}')"
+
+        echo "Updated MLflow development alias to version {{inputs.parameters.model-version}}"
