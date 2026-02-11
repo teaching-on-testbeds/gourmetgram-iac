@@ -10,10 +10,10 @@ spec:
   - backendRefs:
     - name: gourmetgram-app
       namespace: gourmetgram-production
-      port: 80
+      port: 8080
       weight: 90
     - name: gourmetgram-app
       namespace: gourmetgram-canary
-      port: 80
+      port: 8081
       weight: 10
 
