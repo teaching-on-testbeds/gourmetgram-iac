@@ -47,7 +47,7 @@ spec:
               value: "{{steps.check-code-changes.outputs.parameters.git-commit}}"
           when: "'{{steps.check-code-changes.outputs.parameters.needs-rebuild}}' == 'true'"
       # Step 3: Run training
-      - - name: runtraining
+      - - name: run-training
           template: run-training
       # Step 4: Trigger app container build if model was registered
       - - name: build-container
@@ -55,8 +55,8 @@ spec:
           arguments:
             parameters:
             - name: model-version
-              value: "{{steps.runtraining.outputs.parameters.modelversion}}"
-          when: "'{{steps.runtraining.outputs.parameters.modelversion}}' != ''"
+              value: "{{steps.run-training.outputs.parameters.modelversion}}"
+          when: "'{{steps.run-training.outputs.parameters.modelversion}}' != ''"
 
   # Template: Clone repo and check if rebuild is needed by comparing git commit to image label
   - name: check-and-clone
