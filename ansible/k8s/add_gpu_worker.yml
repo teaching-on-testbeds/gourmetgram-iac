@@ -1,0 +1,13 @@
+---
+# Add GPU worker node to existing Kubernetes cluster
+#
+# Prerequisites:
+# 1. GPU node has been created via Terraform (gpu.tf)
+# 2. Update ansible/k8s/inventory/mycluster/hosts.yaml to add gpu-node1:
+#    - Add to all.hosts section with ansible_host, ansible_user, ip, access_ip
+#    - Add to kube_node.hosts section
+#
+# Then run this playbook to join the GPU node to the cluster.
+# See: https://github.com/kubernetes-sigs/kubespray/blob/master/docs/operations/nodes.md
+
+- import_playbook: kubespray/scale.yml

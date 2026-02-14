@@ -2,6 +2,13 @@
 
 Infrastructure-as-code for the GourmetGram MLOps course project. This repo provisions compute + networking, bootstraps a Kubernetes cluster, and deploys the platform/app components plus Argo Workflows templates.
 
+## GPU Support (this branch)
+
+This branch adds support for dynamically attaching a GPU worker node to an existing CPU cluster:
+- `tf/kvm/gpu.tf` – Terraform config for GPU node
+- `ansible/k8s/add_gpu_worker.yml` – Ansible playbook to add GPU worker (via Kubespray scale.yml)
+- `workflows/train-model-gpu.yaml` – Training workflow that schedules on GPU node
+
 ## Repo layout
 
 - `tf/kvm/`: Terraform (OpenStack) to create a 3-node cluster network + instances + a floating IP.
