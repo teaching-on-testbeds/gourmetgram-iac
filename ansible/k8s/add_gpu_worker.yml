@@ -1,0 +1,13 @@
+---
+# Add GPU worker node (node4) to existing Kubernetes cluster
+#
+# Prerequisites:
+# 1. GPU node (node4) has been created via Terraform (gpu.tf)
+# 2. Inventory already includes node4 (hosts.yaml and inventory.yml)
+#
+# After this playbook completes, run post_k8s/post_k8s_gpu.yml to
+# install NVIDIA container toolkit, device plugin, and configure scheduling.
+#
+# See: https://github.com/kubernetes-sigs/kubespray/blob/master/docs/operations/nodes.md
+
+- import_playbook: kubespray/scale.yml
